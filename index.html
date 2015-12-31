@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset=utf-8 />
+<title>Turf coastal cleanup</title>
+<meta name='viewport' content='initial-scale=1,maximum-scale=1,user-scalable=no' />
+<!--
+<script src='https://api.mapbox.com/mapbox.js/v2.2.3/mapbox.js'></script>
+<link href='https://api.mapbox.com/mapbox.js/v2.2.3/mapbox.css' rel='stylesheet' />
+-->
+
+<style>
+  body { margin:0; padding:0; }
+  #map { position:absolute; top:0; bottom:0; width:100%; }
+</style>
+</head>
+<body>
+
+    <script src="d3.v3.min.js" charset="utf-8"></script>
+    <script src='queue.v1.min.js' type="text/javascript"></script>
+
+    <script src='geojson-area.js'></script>
+    <script src='turf.min.js'></script>
+
+<div id='map'></div>
+
+<!--
+Stories:
+    1. Polygon(s) to Lines, 1 layer
+UI:
+    Inputs:
+        1. fuzzy tolerance
+        2. Data to be used as cookie cutter ((multi)polygons, lines? FeatureCollection?)
+        3. Data to be (converted to lines and) have outer boundary buffer removed.
+
+
+-->
+
+<script>
+    /*L.mapbox.accessToken = '<your access token here>';
+    var map = L.mapbox.map('map', 'examples.map-zr0njcqy');
+
+    map.featureLayer.on('ready', function() {
+        var hull = turf.convex(map.featureLayer.getGeoJSON());
+        L.mapbox.featureLayer(hull).addTo(map);
+    });*/
+
+    var A = {};
+
+    queue()
+        .defer(getJSON, 'planning_neighborhoods.geojson') // run the getJSON function, passing the filename as the url argument
+        .defer(getJSON, 'roads_1M_sf_motorways.geojson') // wait for it...
+        .await(afterJSONQ); // Ready; now do afterJSONQ
+
+    function getJSON(url, cbQueue) {
+        d3.json(url, function(error, data) {
+            A[url] = data;
+            cbQueue(error, data);
+        });
+    }
+
+    // All the things we want to do once we have the data is loaded:
+    function afterJSONQ(err, results) {
+        // TODO: parameterize
+        // Convert hoods to coastline buffer
+        // 1. dissolve/union
+
+        var temp, area;
+        var MEGA = 1000000;
+
+        merged = turf.merge(A['planning_neighborhoods.geojson']);
+        console.log(merged);
+        //area = geojsonArea.geometry( A['planning_neighborhoods.geojson'] );
+        temp = merged;
+        area = geojsonArea.geometry(temp.geometry);
+        console.log(area/MEGA);
+        console.log( temp );
+
+        temp = getLargestPolygon(temp);
+        area = geojsonArea.geometry(temp.geometry);
+        console.log(area/MEGA);
+        console.log( temp );
+
+        merged = temp;
+        temp = polygonToLine(merged);
+
+
+        // 2. Instead of converting polygon to line, buffer it slightly
+        //var fc = turf.featurecollection( A.merged );
+        var buffer = turf.buffer( merged , 50, 'meters');
+        buffer = turf.merge(buffer);
+        buffer = getLargestPolygon(buffer);
+
+        console.log(buffer);
+        temp = buffer;
+        area = geojsonArea.geometry(temp.geometry);
+        console.log('buffer', area/MEGA);
+
+        // 3. Then erase original
+        var erased = turf.erase(buffer, merged);
+        erased = getLargestPolygon(erased);
+        var simple = turf.simplify(erased, 0.0001, 0);
+
+        document.querySelector('body').innerHTML = JSON.stringify(simple);
+
+
+        console.log(erased);
+        console.log( geomNPoints( erased.geometry ) );
+        temp = erased;
+        area = geojsonArea.geometry(temp.geometry);
+        console.log('erased, should be small', area/MEGA);
+
+
+        // 4. Then buffer to the fuzzy tolerance
+        var buffer2 = turf.buffer(simple, 30, 'meters');
+        //buffer2 = turf.merge(buffer2);
+        console.log(buffer2.features[0]); // Object {type: "Feature", geometry: Object, properties: Object}
+        document.querySelector('body').innerHTML = JSON.stringify(buffer2.features[0]);
+
+        //var simple = turf.simplify(buffer2, 0.0001, 0);
+        //console.log(simple); // Object {type: "Feature", geometry: Object, properties: Object}
+
+        //buffer2 = getLargestPolygon(buffer2);
+
+        //document.querySelector('body').innerHTML = JSON.stringify(simple);
+
+
+        var result = []
+        temp = A['planning_neighborhoods.geojson'].features;
+        //for (var i = 0; i < temp.length; i++) {
+        for (var i = 0; i < 1; i++) {
+            hood = temp[i];
+            hood_line = polygonToLine(hood);
+            console.log(hood_line);
+            document.querySelector('body').innerHTML += JSON.stringify(hood_line);
+
+            //var checked = crossCheck(buffer2, hood_line);
+
+            //intersection = turf.intersect(buffer2.features[0], hood_line);
+            intersection = turf.erase(hood_line, buffer2.features[0]);
+            //intersection = turf.intersect(buffer2.toGeoJSON(), hood_line.toGeoJSON());
+
+            if (intersection) {
+                result.push(intersection);
+            }
+            document.querySelector('body').innerHTML = JSON.stringify(intersection);
+            console.log(intersection);
+        };
+
+
+        console.log('done');
+        return;
+
+        var simple = turf.simplify(buffer2, 0.01, 0);
+        console.log(simple);
+
+
+        // we'll need to polygonToLine foreach polygon in neighborhoods
+        // then possibly union lines
+
+
+        simple = turf.merge(simple);
+        console.log( geomNPoints( simple.geometry ) );
+        console.log(simple);
+
+        //console.log(JSON.stringify(buffer2));
+    }
+
+
+function crossCheck(baseLayer, drawLayer) {
+
+    var intersection, result = [];
+
+    baseLayer.eachLayer(function (layer) {
+        intersection = turf.intersect(layer.toGeoJSON(), drawLayer.toGeoJSON());
+
+        if (intersection) {
+            result.push(intersection);
+        }
+    });
+
+    if (result.length) {
+        console.log("found " + JSON.stringify(result));
+    } else {
+        console.log("nothing found");
+    }
+
+    return result;
+}
+function getLargestPolygon(gj) {
+    //Object {type: "Feature", geometry: Object, properties: Object}
+    var area = 0, i;
+    var largest_area = 0;
+    var largestFeat;
+    var _ = gj.geometry;
+    switch (_.type) {
+        case 'Polygon':
+            largestFeat = _.coordinates;
+        case 'MultiPolygon':
+            for (i = 0; i < _.coordinates.length; i++) {
+                area_i = polygonArea(_.coordinates[i]);
+                if ( area_i > largest_area ) {
+                    largest_area = area_i;
+                    largestFeat = _.coordinates[i];
+                }
+            }
+            //return largestFeat;
+    }
+
+  var polygon = {
+    "type": "Feature",
+    "geometry": {
+      "type": "Polygon",
+      "coordinates": largestFeat
+    },
+    "properties": []
+  };
+
+  return polygon;
+}
+
+function polygonToLine(gj) {
+    console.log(gj.geometry.coordinates.length);
+    console.log(gj.geometry.coordinates[0].length);
+    console.log(gj.geometry.coordinates[0][0].length);
+  var line = {
+    "type": "Feature",
+    "geometry": {
+      "type": "LineString",
+      "coordinates": gj.geometry.coordinates[0][0]
+    },
+    "properties": []
+  };
+
+  return line;
+}
+
+
+function geomNPoints(geom) {
+    var ret = 0;
+    var coord_arr;
+    for (var i = 0; i < geom.coordinates.length; i++) {
+        coord_arr = geom.coordinates[i];
+        for (var j = 0; j < coord_arr.length; j++) {
+            //coord_arr[j]
+            ret += 1;
+        };
+    };
+    return ret;
+}
+
+/*
+
+    var xhr = new XMLHttpRequest();
+    xhr.open("GET", "planning_neighborhoods.geojson", true);
+    xhr.onload = function (e) {
+      if (xhr.readyState === 4) {
+        if (xhr.status === 200) {
+          console.log(xhr.responseText);
+        } else {
+          console.error(xhr.statusText);
+        }
+      }
+    };
+    xhr.onerror = function (e) {
+      console.error(xhr.statusText);
+    };
+    xhr.send(null); // change state in order to trigger
+*/
+</script>
+</body>
+</html>
+
