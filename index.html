@@ -10,7 +10,7 @@
 -->
 
 <style>
-  body { margin:0; padding:0; }
+  body { margin:0; padding:0; font-family: menlo, monospace; }
   #map { position:absolute; top:0; bottom:0; width:100%; }
 </style>
 </head>
@@ -71,6 +71,7 @@ UI:
         merged = turf.merge(A['planning_neighborhoods.geojson']);
         console.log(merged);
         //area = geojsonArea.geometry( A['planning_neighborhoods.geojson'] );
+        /*
         temp = merged;
         area = geojsonArea.geometry(temp.geometry);
         console.log(area/MEGA);
@@ -83,19 +84,20 @@ UI:
 
         merged = temp;
         temp = polygonToLine(merged);
-
+*/
+        merged = getLargestPolygon(merged);
 
         // 2. Instead of converting polygon to line, buffer it slightly
         //var fc = turf.featurecollection( A.merged );
         var buffer = turf.buffer( merged , 50, 'meters');
         buffer = turf.merge(buffer);
         buffer = getLargestPolygon(buffer);
-
+/*
         console.log(buffer);
         temp = buffer;
         area = geojsonArea.geometry(temp.geometry);
         console.log('buffer', area/MEGA);
-
+*/
         // 3. Then erase original
         var erased = turf.erase(buffer, merged);
         erased = getLargestPolygon(erased);
@@ -103,13 +105,13 @@ UI:
 
         document.querySelector('body').innerHTML = JSON.stringify(simple);
 
-
+/*
         console.log(erased);
         console.log( geomNPoints( erased.geometry ) );
         temp = erased;
         area = geojsonArea.geometry(temp.geometry);
         console.log('erased, should be small', area/MEGA);
-
+*/
 
         // 4. Then buffer to the fuzzy tolerance
         var buffer2 = turf.buffer(simple, 30, 'meters');
@@ -125,10 +127,20 @@ UI:
         //document.querySelector('body').innerHTML = JSON.stringify(simple);
 
 
-        var result = []
+        var result = [];
+        /*var result = {
+            "type": "Feature",
+            "geometry": {
+              "type": "LineString",
+              "coordinates": []
+            },
+            "properties": []
+          };
+        */
+
         temp = A['planning_neighborhoods.geojson'].features;
-        //for (var i = 0; i < temp.length; i++) {
-        for (var i = 0; i < 1; i++) {
+        for (var i = 0; i < temp.length; i++) {
+        //for (var i = 0; i < 2; i++) {
             hood = temp[i];
             hood_line = polygonToLine(hood);
             console.log(hood_line);
@@ -137,15 +149,19 @@ UI:
             //var checked = crossCheck(buffer2, hood_line);
 
             //intersection = turf.intersect(buffer2.features[0], hood_line);
-            intersection = turf.erase(hood_line, buffer2.features[0]);
+            remainder = turf.erase(hood_line, buffer2.features[0]);
             //intersection = turf.intersect(buffer2.toGeoJSON(), hood_line.toGeoJSON());
 
-            if (intersection) {
-                result.push(intersection);
+            if (remainder) {
+                result.push(remainder);
+                //result = turf.union(result, remainder);
             }
-            document.querySelector('body').innerHTML = JSON.stringify(intersection);
-            console.log(intersection);
+            document.querySelector('body').innerHTML = JSON.stringify(result);
+            console.log(remainder);
         };
+        var feature_collection = turf.featurecollection(result);
+        document.querySelector('body').innerHTML = JSON.stringify(feature_collection);
+        console.log(feature_collection);
 
 
         console.log('done');
@@ -270,4 +286,3 @@ function geomNPoints(geom) {
 </script>
 </body>
 </html>
-
