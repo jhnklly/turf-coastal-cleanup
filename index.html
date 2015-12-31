@@ -146,11 +146,8 @@ UI:
             console.log(hood_line);
             document.querySelector('body').innerHTML += JSON.stringify(hood_line);
 
-            //var checked = crossCheck(buffer2, hood_line);
-
             //intersection = turf.intersect(buffer2.features[0], hood_line);
             remainder = turf.erase(hood_line, buffer2.features[0]);
-            //intersection = turf.intersect(buffer2.toGeoJSON(), hood_line.toGeoJSON());
 
             if (remainder) {
                 result.push(remainder);
@@ -159,9 +156,11 @@ UI:
             document.querySelector('body').innerHTML = JSON.stringify(result);
             console.log(remainder);
         };
-        var feature_collection = turf.featurecollection(result);
-        document.querySelector('body').innerHTML = JSON.stringify(feature_collection);
-        console.log(feature_collection);
+        var out = turf.featurecollection(result);
+        // out = turf.merge(feature_collection);
+        // CONSIDER: topojson cli or server to "union" lines (or earlier, when still polygons)
+        document.querySelector('body').innerHTML = JSON.stringify(out);
+        console.log(out);
 
 
         console.log('done');
@@ -183,26 +182,6 @@ UI:
     }
 
 
-function crossCheck(baseLayer, drawLayer) {
-
-    var intersection, result = [];
-
-    baseLayer.eachLayer(function (layer) {
-        intersection = turf.intersect(layer.toGeoJSON(), drawLayer.toGeoJSON());
-
-        if (intersection) {
-            result.push(intersection);
-        }
-    });
-
-    if (result.length) {
-        console.log("found " + JSON.stringify(result));
-    } else {
-        console.log("nothing found");
-    }
-
-    return result;
-}
 function getLargestPolygon(gj) {
     //Object {type: "Feature", geometry: Object, properties: Object}
     var area = 0, i;
